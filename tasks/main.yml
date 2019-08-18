@@ -11,7 +11,7 @@
 
 - name: Install websites from github.
   git:
-    repo: 'https://github.com/thecodebasesite/{{ item }}.git'
+    repo: '{{ item.repo_https_base_url }}/{{ item }}.git'
     dest: /opt/{{ item }}
     version: master
     force: yes
