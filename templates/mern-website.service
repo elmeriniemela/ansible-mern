@@ -1,0 +1,11 @@
+Description=NodeJS service for {{ item.repo_name }}
+After=network.target
+
+[Service]
+User={{ websites_user }}
+Group={{ websites_user }}
+WorkingDirectory={{ websites_home_dir }}/{{ item.repo_name }}
+ExecStart=/usr/bin/node {{ websites_home_dir }}/{{ item.repo_name }}/backend/server.js
+
+[Install]
+WantedBy=multi-user.target

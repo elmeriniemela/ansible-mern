@@ -1,52 +1,62 @@
 ---
 
-- name: "Add .bash_aliases to {{ login_user }}"
-  become_user: "{{ login_user }}"
-  template: 
-    src: ".bash_aliases" 
-    dest: "{{ lookup('env', 'HOME') }}/.bash_aliases"
-    owner: "{{ login_user }}" 
-    group: "{{ login_user }}" 
-    mode: 0644
-
 - name: Install websites from github.
+  become_user: "{{ websites_user }}"
   git:
-    repo: '{{ item.repo_https_base_url }}/{{ item }}.git'
-    dest: /opt/{{ item }}
+    repo: '{{ item.repo_https_base_url }}/{{ item.repo_name }}.git'
+    dest: "/opt/{{ websites_user }}/{{ item.repo_name }}"
     version: master
     force: yes
-  with_items:
-    - mern
-  register: git_finished
+  with_items: "{{ websites }}"
 
 - name: Install packages based on package.json.
+  become_user: "{{ websites_user }}"
   npm:
-    path: /opt/mern/{{ item }}
+    path: "/opt/{{ websites_user }}/{{ websites[0].repo_name }}/{{ item }}"
   with_items:
     - backend
     - frontend
-  register: npm_finished
-  when: git_finished.changed
 
-- name: Define nodejs_install_npm_user
-  set_fact:
-    nodejs_install_npm_user: "{{ ansible_user | default(lookup('env', 'USER')) }}"
-  when: nodejs_install_npm_user is not defined
+- name: Build react frontend
+  tags: mern
+  become_user: "{{ websites_user }}"
+  command: "/usr/bin/npm run build"
+  args:
+    chdir: "/opt/{{ websites_user }}/{{ item.repo_name }}/frontend"
+  register: build_result
+  with_items: "{{ websites }}"
 
+- name: Creating a systemd Unit File for NodeJS app
+  tags: mern
+  template:
+    src: "mern-website.service"
+    dest: "/etc/systemd/system/{{ item.repo_name }}.service"
+    owner: root
+    group: root
+    mode: 0644
+  with_items: "{{ websites }}"
 
-- name: Stop Mern Apps
-  become_user: "{{ nodejs_install_npm_user }}"
-  command: "{{ npm_config_prefix }}/bin/pm2 stop {{ item }} chdir=/opt/mern/{{ item }}"
-  ignore_errors: yes
-  with_items:
-    - backend
+- name: Run daemon-reload before doing any other operations
+  tags: mern
+  systemd:
+    daemon_reload: yes
 
-- name: Start Mern Apps
-  become_user: "{{ nodejs_install_npm_user }}"
-  command: "{{ npm_config_prefix }}/bin/pm2 start --name={{ item }} /usr/bin/npm -- start chdir=/opt/mern/{{ item }}"
-  ignore_errors: yes
-  with_items:
-    - backend
+- name: Enable NodeJS app service
+  tags: mern
+  service:
+    name: "{{ item.repo_name }}"
+    enabled: yes
+    state: restarted
+  with_items: "{{ websites }}"
 
-- name: Configures a startup script to launch PM2 and its managed processes on server boots
-  command: "{{ npm_config_prefix }}/bin/pm2 startup systemd"
+- name: "Add nginx conf file mern apps"
+  tags: mern
+  template:
+    src: mern-nginx.conf
+    dest: "/etc/nginx/sites-enabled/{{ item.sub_domain }}.{{ item.main_domain }}.conf"
+    force: true
+    owner: root
+    group: root
+    mode: 0644
+  notify: reload nginx
+  with_items: "{{ websites }}"
