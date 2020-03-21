@@ -1,6 +1,7 @@
 ---
 
 - name: Install websites from github.
+  tags: mern
   become_user: "{{ websites_user }}"
   git:
     repo: '{{ item.repo_https_base_url }}/{{ item.repo_name }}.git'
@@ -10,6 +11,7 @@
   with_items: "{{ websites }}"
 
 - name: Install packages based on package.json.
+  tags: mern
   become_user: "{{ websites_user }}"
   npm:
     path: "/opt/{{ websites_user }}/{{ websites[0].repo_name }}/{{ item }}"
